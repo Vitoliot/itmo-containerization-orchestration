@@ -1,0 +1,2 @@
+  PID  PPID USER     UID COMMAND
+ 6979  6972 andrey   501 /opt/homebrew/Cellar/python@3.11/3.11.14/Frameworks/Python.framework/Versions/3.11/Resources/Python.app/Contents/MacOS/Python ../api/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080

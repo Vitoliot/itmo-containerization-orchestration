@@ -1,0 +1,2 @@
+  PID  %CPU %MEM    RSS      VSZ COMMAND
+ 8110  22.7  0.2  13104 412228912 /opt/homebrew/Cellar/python@3.11/3.11.14/Frameworks/Python.framework/Versions/3.11/Resources/Python.app/Contents/MacOS/Python .venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080

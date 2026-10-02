@@ -1,0 +1,82 @@
+{
+  "title": "Lab1 Container",
+  "uid": "lab1-container",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 3,
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Memory working set (docker containers)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "container_memory_working_set_bytes{id=~\"/docker/[a-f0-9]{64}\"}",
+          "legendFormat": "{{id}}",
+          "refId": "A"
+        },
+        {
+          "expr": "vector(67108864)",
+          "legendFormat": "lab1-api limit 64MiB",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "fillOpacity": 8 }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "CPU usage cores",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (id) (rate(container_cpu_usage_seconds_total{id=~\"/docker/[a-f0-9]{64}\"}[1m]))",
+          "legendFormat": "{{id}}",
+          "refId": "A"
+        },
+        {
+          "expr": "vector(0.5)",
+          "legendFormat": "lab1-api limit 0.5 CPU",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 8 }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "CPU throttling ratio",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(container_cpu_cfs_throttled_periods_total{id=~\"/docker/[a-f0-9]{64}\"}[1m]) / clamp_min(rate(container_cpu_cfs_periods_total{id=~\"/docker/[a-f0-9]{64}\"}[1m]), 1e-9)",
+          "legendFormat": "{{id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "fillOpacity": 15 }
+        }
+      }
+    }
+  ]
+}
