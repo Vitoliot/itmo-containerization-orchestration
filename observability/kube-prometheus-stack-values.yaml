@@ -1,0 +1,133 @@
+prometheus:
+  additionalServiceMonitors:
+    - name: api
+
+      namespaceSelector:
+        matchNames:
+          - lab
+
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: api
+
+      endpoints:
+        - port: http
+          path: /metrics
+          interval: 5s
+grafana:
+  additionalDataSources:
+
+    - name: Loki
+      type: loki
+      uid: loki
+      access: proxy
+      url: http://loki-gateway.observability.svc.cluster.local
+      editable: false
+
+      jsonData:
+        derivedFields:
+          - name: TraceID
+            datasourceUid: jaeger
+            matcherRegex: '"trace_id":"([0-9a-f]+)"'
+            url: '$${__value.raw}'
+            urlDisplayLabel: View Trace
+
+    - name: Jaeger
+      type: jaeger
+      uid: jaeger
+      access: proxy
+      url: http://jaeger.observability.svc.cluster.local:16686
+      editable: false
+
+additionalPrometheusRulesMap:
+
+  api-alerts:
+    groups:
+      - name: api-critical
+        rules:
+
+          - alert: ApiHighErrorRate
+
+            expr: |
+              (
+                sum(rate(http_errors_total[1m]))
+                /
+                clamp_min(sum(rate(http_requests_total[1m])), 0.01)
+              ) > 0.20
+
+            for: 1m
+
+            labels:
+              severity: critical
+              service: api
+
+            annotations:
+              summary: "API error rate is above 20%"
+              description: "More than 20% of API requests are failing."
+
+          - alert: ApiHighLatencyP95
+
+            expr: |
+              histogram_quantile(
+                0.95,
+                sum by (le) (
+                  rate(http_request_duration_seconds_bucket[2m])
+                )
+              ) > 2
+
+            for: 1m
+
+            labels:
+              severity: critical
+              service: api
+
+            annotations:
+              summary: "API p95 latency is above 2 seconds"
+              description: "95% percentile API latency exceeded 2 seconds."
+
+          - alert: ApiOverload
+
+            expr: |
+              sum(rate(http_requests_total[1m])) > 10
+
+            for: 1m
+
+            labels:
+              severity: critical
+              service: api
+
+            annotations:
+              summary: "API request rate is too high"
+              description: "API is receiving more than 10 requests per second."
+
+
+alertmanager:
+
+  config:
+
+    global:
+      resolve_timeout: 1m
+
+    route:
+      group_by:
+        - alertname
+
+      group_wait: 5s
+      group_interval: 10s
+      repeat_interval: 1h
+
+      receiver: lab-webhook
+
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname = "Watchdog"
+
+    receivers:
+
+      - name: lab-webhook
+        webhook_configs:
+          - url: "https://webhook.site/<YOUR-ID>"
+            send_resolved: true
+
+      - name: "null"

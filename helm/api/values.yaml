@@ -1,0 +1,12 @@
+replicaCount: 1
+
+image:
+  repository: itmo-containerization-orchestration\api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8000
+
+otel:
+  endpoint: http://jaeger.observability.svc.cluster.local:4317

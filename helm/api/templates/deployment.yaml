@@ -1,0 +1,9 @@
+env:
+  - name: OTEL_SERVICE_NAME
+    value: api
+
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: {{ .Values.otel.endpoint | quote }}
+
+  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+    value: grpc

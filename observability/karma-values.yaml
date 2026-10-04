@@ -1,0 +1,3 @@
+env:
+  ALERTMANAGER_URI: http://monitoring-kube-prometheus-alertmanager.observability.svc.cluster.local:9093
+  ALERTMANAGER_NAME: lab
