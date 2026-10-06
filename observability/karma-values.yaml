@@ -1,0 +1,17 @@
+env:
+  - name: ALERTMANAGER_URI
+    value: http://monitoring-kube-prometheus-alertmanager.observability.svc.cluster.local:9093
+
+  - name: ALERTMANAGER_NAME
+    value: lab2
+
+  - name: ALERTMANAGER_INTERVAL
+    value: 15s
+
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi

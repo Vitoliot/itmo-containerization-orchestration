@@ -1,0 +1,142 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+
+metadata:
+  name: api-alerts
+  labels:
+    release: monitoring
+    app: api
+
+spec:
+  groups:
+    - name: api.rules
+
+      rules:
+
+        # ---------------------------------------------------------
+        # 1. Высокая доля ошибок
+        # ---------------------------------------------------------
+        - alert: ApiHighErrorRate
+
+          expr: |
+            (
+              sum(
+                rate(
+                  api_http_errors_total{
+                    namespace="app"
+                  }[1m]
+                )
+              )
+              /
+              clamp_min(
+                sum(
+                  rate(
+                    api_http_requests_total{
+                      namespace="app"
+                    }[1m]
+                  )
+                ),
+                0.001
+              )
+            ) > 0.20
+
+          for: 1m
+
+          labels:
+            severity: critical
+            service: api
+
+          annotations:
+            summary: "API: высокая доля ошибок"
+
+            description: |
+              Более 20% запросов API заканчиваются ошибкой 5xx
+              в течение как минимум одной минуты.
+
+            runbook: |
+              1. Проверить RED dashboard в Grafana.
+              2. Определить endpoint с ошибками.
+              3. Найти error-логи API в Loki.
+              4. Взять trace_id и открыть соответствующий trace в Jaeger.
+
+
+        # ---------------------------------------------------------
+        # 2. Высокая latency p95
+        # ---------------------------------------------------------
+        - alert: ApiHighLatencyP95
+
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (
+                rate(
+                  api_http_request_duration_seconds_bucket{
+                    namespace="app",
+                    route!="/health",
+                    route!="/load"
+                  }[2m]
+                )
+              )
+            ) > 1.5
+
+          for: 1m
+
+          labels:
+            severity: critical
+            service: api
+
+          annotations:
+            summary: "API: p95 latency выше 1.5 секунд"
+
+            description: |
+              95-й перцентиль времени ответа API превышает
+              1.5 секунды в течение как минимум одной минуты.
+
+            runbook: |
+              1. Проверить latency на RED dashboard.
+              2. Определить медленный endpoint.
+              3. Открыть медленные traces в Jaeger.
+              4. Найти span, на котором тратится основное время.
+
+
+        # ---------------------------------------------------------
+        # 3. API недоступен для Prometheus
+        # ---------------------------------------------------------
+        - alert: ApiDown
+
+          expr: |
+            (
+              max(
+                up{
+                  namespace="app",
+                  service=~"api|api-api"
+                }
+              ) == 0
+            )
+            or
+            absent(
+              up{
+                namespace="app",
+                service=~"api|api-api"
+              }
+            )
+
+          for: 1m
+
+          labels:
+            severity: critical
+            service: api
+
+          annotations:
+            summary: "API недоступен"
+
+            description: |
+              Prometheus не может получить метрики API
+              в течение как минимум одной минуты.
+
+            runbook: |
+              1. kubectl get pods -n app
+              2. kubectl get svc -n app
+              3. kubectl get endpoints -n app
+              4. kubectl describe pod -n app <pod>
+              5. kubectl logs -n app <pod>
