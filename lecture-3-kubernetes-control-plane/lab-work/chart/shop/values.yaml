@@ -94,8 +94,10 @@ monitoring:
   serviceMonitor:
     enabled: true
     interval: 15s
+    labels: {}
   prometheusRule:
     enabled: true
+    labels: {}
 
 postgres:
   enabled: true

@@ -589,3 +589,106 @@ postgres: /controller/run:5432 - accepting connections
 последующее удаление Pod `api` привело к созданию нового Pod Deployment-ом.
 
 ![Workloads remain available](screenshots/part4-successful-connection.png)
+
+## Часть 5 — мониторинг и алерты
+
+Для мониторинга используются метрики приложения из лабораторной 2 и
+Prometheus Operator-ресурсы. Отдельная копия Prometheus/Grafana для этой
+лабораторной не создаётся: чарт публикует `ServiceMonitor` и
+`PrometheusRule`, а существующий monitoring stack сам обнаруживает их через
+свои label selectors.
+
+API уже экспортирует метрики на `/metrics`:
+
+- `api_http_requests_total` — число HTTP-запросов с labels `method`, `route` и
+  `status_code`;
+- `api_http_errors_total` — число ответов со статусом `5xx`;
+- `api_http_request_duration_seconds` — histogram длительности запросов.
+
+### ServiceMonitor
+
+Шаблон
+[`templates/servicemonitor.yaml`](lab-work/chart/shop/templates/servicemonitor.yaml)
+находит Service API по стандартным labels и настраивает scrape endpoint:
+
+```yaml
+endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+```
+
+`ServiceMonitor` включён в `values.yaml` через
+`monitoring.serviceMonitor.enabled`. Если установленный Prometheus Operator
+использует обязательный label, его можно передать без изменения шаблона:
+
+```yaml
+monitoring:
+  serviceMonitor:
+    labels:
+      release: kube-prometheus-stack
+```
+
+### PrometheusRule и выбор алертов
+
+В
+[`templates/prometheusrule.yaml`](lab-work/chart/shop/templates/prometheusrule.yaml)
+определены три алерта:
+
+1. **`ShopApiHighErrorRate`** срабатывает при доле ответов `5xx` выше 5%
+   в течение двух минут. Он показывает ошибки приложения, а не только
+   недоступность Pod.
+2. **`ShopApiHighP95Latency`** срабатывает, когда 95-й перцентиль задержки
+   превышает одну секунду в течение пяти минут. Он обнаруживает медленное
+   обслуживание запросов даже при статусе `200`.
+3. **`ShopApiTargetDown`** срабатывает, если Prometheus не может скрейпить
+   Service API в течение двух минут. Он показывает проблемы с Pod, Service,
+   сетью или самим endpoint `/metrics`.
+
+Проверка после установки чарта:
+
+```bash
+helm upgrade --install shop \
+  ./lecture-3-kubernetes-control-plane/lab-work/chart/shop \
+  --namespace app \
+  --wait \
+  --timeout 5m
+
+kubectl get servicemonitor,prometheusrule -n app
+kubectl describe servicemonitor shop-shop-api -n app
+kubectl describe prometheusrule shop-shop -n app
+```
+
+Для демонстрации firing-состояния можно вызвать намеренные ошибки API:
+
+```bash
+API_URL="http://127.0.0.1:18080"
+for i in $(seq 1 50); do
+  curl --silent --output /dev/null "${API_URL}/fail"
+done
+```
+
+Перед этим запусти port-forward в отдельном терминале:
+
+```bash
+kubectl port-forward -n app svc/shop-shop-api 18080:8080
+```
+
+После интервала `for: 2m` алерт `ShopApiHighErrorRate` должен появиться в
+Prometheus как `FIRING`. Состояние проверяется в UI Prometheus или через его
+API:
+
+```bash
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 19090:9090
+curl --silent http://127.0.0.1:19090/api/v1/alerts
+```
+
+Фактическое имя Service Prometheus зависит от установленного в лаборатории
+2 стека; его можно найти командой `kubectl get svc -A | grep -i prometheus`.
+
+В текущем репозитории конфигурация лаборатории 1 запускает обычный Docker
+Prometheus для метрик cAdvisor. Он не обрабатывает CRD `ServiceMonitor` и
+`PrometheusRule`. Для этой части нужен Prometheus Operator-совместимый
+экземпляр в Kubernetes (например, уже установленный в кластере стек
+`kube-prometheus-stack`); это не дополнительная копия мониторинга в чарте, а
+контроллер, который обнаруживает эти два ресурса.

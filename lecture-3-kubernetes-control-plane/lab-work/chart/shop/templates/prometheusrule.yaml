@@ -1,0 +1,56 @@
+{{- if .Values.monitoring.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "shop.fullname" . }}
+  labels:
+    {{- include "shop.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: shop-api
+      rules:
+        - alert: ShopApiHighErrorRate
+          expr: |
+            (
+              sum(rate(api_http_errors_total{namespace="{{ .Release.Namespace }}"}[5m]))
+              /
+              clamp_min(sum(rate(api_http_requests_total{namespace="{{ .Release.Namespace }}"}[5m])), 1)
+            ) > 0.05
+          for: 2m
+          labels:
+            severity: warning
+            service: shop-api
+          annotations:
+            summary: "Shop API error rate is above 5%"
+            description: "More than 5% of Shop API responses have status 5xx during the last 5 minutes."
+
+        - alert: ShopApiHighP95Latency
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (
+                rate(api_http_request_duration_seconds_bucket{namespace="{{ .Release.Namespace }}"}[5m])
+              )
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+            service: shop-api
+          annotations:
+            summary: "Shop API p95 latency is above 1 second"
+            description: "The 95th percentile request duration has exceeded 1 second for 5 minutes."
+
+        - alert: ShopApiTargetDown
+          expr: |
+            up{namespace="{{ .Release.Namespace }}", service="{{ include "shop.fullname" . }}-api"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            service: shop-api
+          annotations:
+            summary: "Shop API Prometheus target is down"
+            description: "Prometheus cannot scrape the Shop API metrics endpoint for 2 minutes."
+{{- end }}
