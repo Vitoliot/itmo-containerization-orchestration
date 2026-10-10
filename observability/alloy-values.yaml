@@ -1,0 +1,239 @@
+controller:
+  type: daemonset
+
+alloy:
+  mounts:
+    varlog: true
+    dockercontainers: false
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 384Mi
+
+  extraEnv:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+
+  configMap:
+    create: true
+
+    content: |-
+      logging {
+        level  = "info"
+        format = "logfmt"
+      }
+
+
+      // =========================================================
+      // 1. Находим pods только на текущей node
+      // =========================================================
+
+      discovery.kubernetes "pods" {
+        role = "pod"
+
+        selectors {
+          role  = "pod"
+          field = "spec.nodeName=" + sys.env("NODE_NAME")
+        }
+      }
+
+
+      // =========================================================
+      // 2. Kubernetes metadata -> Loki labels + path
+      // =========================================================
+
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+
+        // namespace=app
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+
+
+        // pod=api-xxxxx
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+
+
+        // container=api
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+
+
+        // Ваш Deployment использует:
+        //
+        // labels:
+        //   app: api
+        //
+        // поэтому именно __meta_kubernetes_pod_label_app
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          target_label  = "app"
+        }
+
+
+        // Node, на которой находится pod
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "node"
+        }
+
+
+        // Полезно видеть runtime: containerd/docker/...
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_id"]
+          regex         = `^(\S+):\/\/.+$`
+          replacement   = "$1"
+          target_label  = "container_runtime"
+        }
+
+
+        // /var/log/pods/<namespace>_<pod>_<uid>/<container>/<N>.log
+        rule {
+          source_labels = [
+            "__meta_kubernetes_pod_uid",
+            "__meta_kubernetes_pod_container_name",
+          ]
+
+          separator    = "/"
+          target_label = "__path__"
+          replacement  = "/var/log/pods/*$1/*.log"
+        }
+      }
+
+
+      // =========================================================
+      // 3. Раскрываем glob
+      // =========================================================
+
+      local.file_match "pods" {
+        path_targets = discovery.relabel.pods.output
+      }
+
+
+      // =========================================================
+      // 4. Tail файлов
+      // =========================================================
+
+      loki.source.file "pods" {
+        targets    = local.file_match.pods.targets
+        forward_to = [loki.process.pods.receiver]
+      }
+
+
+      // =========================================================
+      // 5. Парсим и обогащаем логи
+      // =========================================================
+
+      loki.process "pods" {
+
+        // containerd CRI:
+        //
+        // 2026-... stdout F {"message":"..."}
+        //
+        // После stage.cri останется JSON приложения.
+        stage.cri {}
+
+
+        // Статические метки всей лаборатории.
+        //
+        // Такие labels безопасны: их значения почти не меняются.
+        stage.static_labels {
+          values = {
+            cluster     = "minikube",
+            environment = "lab",
+          }
+        }
+
+
+        // -------------------------------------------------------
+        // Только логи api являются нашим структурированным JSON
+        // -------------------------------------------------------
+
+        stage.match {
+          selector = "{namespace=\"app\", app=\"api\"}"
+
+
+          stage.json {
+            expressions = {
+              timestamp   = "timestamp",
+              level       = "level",
+              message     = "message",
+
+              trace_id    = "trace_id",
+              span_id     = "span_id",
+
+              method      = "method",
+              path        = "path",
+              route       = "route",
+
+              status_code = "status_code",
+              duration_ms = "duration_ms",
+            }
+          }
+
+
+          // Используем timestamp самого приложения.
+          //
+          // Если он почему-то не распарсится —
+          // оставляем timestamp CRI.
+          stage.timestamp {
+            source            = "timestamp"
+            format            = "RFC3339Nano"
+            action_on_failure = "skip"
+          }
+
+
+          // level имеет очень небольшое число значений:
+          // info / warning / error ...
+          //
+          // Поэтому для учебного сервиса label допустим.
+          stage.labels {
+            values = {
+              level = ""
+            }
+          }
+
+
+          // Высокая/средняя cardinality:
+          // не превращаем их в Loki labels.
+          stage.structured_metadata {
+            values = {
+              trace_id    = "",
+              span_id     = "",
+              method      = "",
+              path        = "",
+              route       = "",
+              status_code = "",
+              duration_ms = "",
+            }
+          }
+        }
+
+
+        forward_to = [loki.write.default.receiver]
+      }
+
+
+      // =========================================================
+      // 6. Loki
+      // =========================================================
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }

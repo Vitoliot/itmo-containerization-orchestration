@@ -1,0 +1,134 @@
+defaultRules:
+  create: false
+
+nodeExporter:
+  enabled: false
+
+kubeStateMetrics:
+  enabled: false
+
+kubeApiServer:
+  enabled: false
+
+kubelet:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeEtcd:
+  enabled: false
+
+kubeProxy:
+  enabled: false
+
+coreDns:
+  enabled: false
+
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 192Mi
+
+
+prometheus:
+  enabled: true
+
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 6h
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 700m
+        memory: 512Mi
+
+
+grafana:
+  enabled: true
+
+  adminPassword: admin
+
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      access: proxy
+      url: http://loki.observability.svc.cluster.local:3100
+
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+
+alertmanager:
+  enabled: true
+
+  config:
+    global:
+      resolve_timeout: 1m
+
+    route:
+      receiver: "null"
+
+      group_by:
+        - alertname
+        - service
+
+      group_wait: 10s
+      group_interval: 30s
+      repeat_interval: 5m
+
+      routes:
+
+        - receiver: "null"
+          matchers:
+            - 'alertname =~ "Watchdog|InfoInhibitor"'
+
+        - receiver: webhook
+          matchers:
+            - 'severity = "critical"'
+
+    receivers:
+
+      - name: "null"
+
+      - name: webhook
+        webhook_configs:
+          - url: http://alert-webhook.observability.svc.cluster.local:8080/alerts
+            send_resolved: true
+
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+
+      limits:
+        cpu: 200m
+        memory: 128Mi
