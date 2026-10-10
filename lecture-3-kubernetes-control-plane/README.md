@@ -458,3 +458,109 @@ Pod PostgreSQL удалён ручно для проверки reconciliation:
 Этот результат показывает, что reconciliation работает корректно: Helm
 описывает декларативное состояние, Deployment управляет API приложения, а
 оператор непрерывно поддерживает PostgreSQL в синхронизации с CR.
+
+## Часть 4 — отказ control plane
+
+Цель проверки — разделить доступность уже запущенных workloads и доступность
+Kubernetes API. При остановленном `kube-apiserver` новые операции управления
+(`kubectl get`, `kubectl delete`, `helm upgrade`) недоступны, но уже созданные
+Pod продолжают работать на узле. Контроллеры не могут получить новые события
+через API, поэтому reconciliation возобновится только после восстановления
+apiserver.
+
+Проверка выполняется на локальном kind-кластере `lab3`. Важно не останавливать
+контейнер `lab3-control-plane` целиком: это остановит и workloads, если
+приложение запущено на том же single-node кластере. Вместо этого временно
+приостанавливается только процесс `kube-apiserver`.
+
+### Подготовка наблюдения
+
+Сначала убедитесь, что все workloads готовы, и сохраните их IP-адреса до
+отказа API:
+
+```bash
+kubectl get pods -n app -o wide
+kubectl get cluster shop-postgres -n app
+
+API_POD_IP="$(kubectl get pods -n app \
+  -l app.kubernetes.io/name=api \
+  -o jsonpath='{.items[0].status.podIP}')"
+WORKER_POD_IP="$(kubectl get pods -n app \
+  -l app.kubernetes.io/name=worker \
+  -o jsonpath='{.items[0].status.podIP}')"
+POSTGRES_CONTAINER_ID="$(docker exec lab3-control-plane \
+  crictl ps --name postgres -q | head -1)"
+
+echo "api=$API_POD_IP worker=$WORKER_POD_IP"
+echo "postgres-container=$POSTGRES_CONTAINER_ID"
+```
+
+Откройте отдельный терминал для проверки трафика через сеть kind-ноды:
+
+```bash
+docker exec -it lab3-control-plane sh
+curl --fail "http://${API_POD_IP}:8080/health"
+curl --fail "http://${WORKER_POD_IP}:8080/health"
+crictl exec "$POSTGRES_CONTAINER_ID" pg_isready -U shop -d shop
+```
+
+Ожидаемый результат до отказа:
+
+```text
+ok
+ok
+/var/run/postgresql:5432 - accepting connections
+```
+
+### Остановка только kube-apiserver
+
+В основном терминале сохраните PID процесса и приостановите его сигналом
+`SIGSTOP`:
+
+```bash
+APISERVER_ID="$(docker exec lab3-control-plane \
+  crictl ps --name kube-apiserver -q | head -1)"
+APISERVER_PID="$(docker exec lab3-control-plane \
+  sh -c "crictl inspect ${APISERVER_ID} | jq -r '.info.pid'")"
+test -n "$APISERVER_PID"
+docker exec lab3-control-plane kill -STOP "$APISERVER_PID"
+```
+
+После этого зафиксируйте недоступность control plane:
+
+```bash
+kubectl get pods -n app
+helm list -n app
+```
+
+Обе команды должны завершиться ошибкой подключения к Kubernetes API. В
+параллельном терминале повторите `curl` и `pg_isready`: уже запущенные `api`,
+`worker` и PostgreSQL должны продолжать отвечать, потому что их процессы и
+сетевые соединения не зависят от обработки новых запросов API.
+
+### Восстановление и проверка reconciliation
+
+Верните процесс apiserver сигналом `SIGCONT`:
+
+```bash
+docker exec lab3-control-plane kill -CONT "$APISERVER_PID"
+kubectl wait --for=condition=Ready node/lab3-control-plane --timeout=60s
+kubectl get pods -n app
+kubectl get cluster shop-postgres -n app
+```
+
+После восстановления API снова доступны `kubectl` и `helm`, а control plane
+может продолжить обработку событий и reconciliation. Для демонстрации
+восстановления можно удалить Pod `api` уже после возврата apiserver:
+
+```bash
+kubectl delete pod -n app \
+  "$(kubectl get pods -n app -l app.kubernetes.io/name=api \
+    -o jsonpath='{.items[0].metadata.name}')"
+kubectl get pods -n app -l app.kubernetes.io/name=api -w
+```
+
+Новый Pod должен появиться и перейти в `1/1 Running`. В `screenshots/` нужно
+сохранить два подтверждения: ошибку `kubectl` во время отказа и параллельные
+успешные проверки `api`/`worker`/PostgreSQL, затем результат восстановления
+и reconciliation после возврата apiserver.
