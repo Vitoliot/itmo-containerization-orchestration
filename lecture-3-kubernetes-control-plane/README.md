@@ -564,3 +564,28 @@ kubectl get pods -n app -l app.kubernetes.io/name=api -w
 сохранить два подтверждения: ошибку `kubectl` во время отказа и параллельные
 успешные проверки `api`/`worker`/PostgreSQL, затем результат восстановления
 и reconciliation после возврата apiserver.
+
+### Результаты проверки
+
+Во время эксперимента `kube-apiserver` был приостановлен сигналом `SIGSTOP`.
+Операция управления завершилась ошибкой:
+
+```text
+Unable to connect to the server: net/http: TLS handshake timeout
+```
+
+При этом уже запущенные workloads продолжили работать:
+
+```text
+api:      ok
+worker:   ok
+postgres: /controller/run:5432 - accepting connections
+```
+
+![Control plane stopped](screenshots/part4-stopped-server.png)
+
+После отправки `SIGCONT` API-сервер восстановился. Команды `kubectl` снова
+стали доступны, PostgreSQL остался в состоянии `Cluster in healthy state`, а
+последующее удаление Pod `api` привело к созданию нового Pod Deployment-ом.
+
+![Workloads remain available](screenshots/part4-successful-connection.png)
