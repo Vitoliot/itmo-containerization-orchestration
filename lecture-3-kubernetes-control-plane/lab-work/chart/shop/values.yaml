@@ -1,0 +1,121 @@
+api:
+  replicaCount: 3
+
+  image:
+    repository: ghcr.io/vitoliot/shop-api
+    tag: lab2-v2
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  env:
+    - name: OTEL_SERVICE_NAME
+      value: api
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://jaeger:4317
+    - name: OTEL_EXPORTER_OTLP_PROTOCOL
+      value: grpc
+    - name: SELF_BASE_URL
+      value: http://127.0.0.1:8080
+    - name: HEALTH_FAIL
+      value: "false"
+
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+
+  probes:
+    readiness:
+      path: /health
+      initialDelaySeconds: 2
+      periodSeconds: 5
+      failureThreshold: 2
+    liveness:
+      path: /health
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      failureThreshold: 3
+
+worker:
+  replicaCount: 2
+
+  image:
+    repository: ghcr.io/vitoliot/shop-worker
+    tag: lab3
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  env:
+    - name: OTEL_SERVICE_NAME
+      value: worker
+    - name: HEALTH_FAIL
+      value: "false"
+
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+
+  probes:
+    readiness:
+      path: /health
+      initialDelaySeconds: 2
+      periodSeconds: 5
+      failureThreshold: 2
+    liveness:
+      path: /health
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      failureThreshold: 3
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    labels:
+      release: kube-prometheus-stack
+  prometheusRule:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+
+postgres:
+  enabled: true
+  name: shop-postgres
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.4
+  storage:
+    size: 1Gi
+    storageClass: standard
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  database:
+    name: shop
+    owner: shop

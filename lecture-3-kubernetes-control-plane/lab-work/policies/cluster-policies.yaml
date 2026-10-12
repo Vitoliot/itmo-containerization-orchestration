@@ -1,0 +1,183 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: shop-cluster-guardrails
+  annotations:
+    policies.kyverno.io/title: Shop cluster guardrails
+    policies.kyverno.io/category: Security,Best Practices
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-resource-bounds
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kyverno
+                - cnpg-system
+                - kube-system
+                - local-path-storage
+                - monitoring
+          - resources:
+              selector:
+                matchExpressions:
+                  - key: cnpg.io/cluster
+                    operator: Exists
+          - resources:
+              namespaces:
+                - app
+              names:
+                - shop-postgres-*
+      validate:
+        message: Every container must define CPU and memory requests and limits.
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+
+    - name: require-trusted-image
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kyverno
+                - cnpg-system
+                - kube-system
+                - local-path-storage
+                - monitoring
+          - resources:
+              selector:
+                matchExpressions:
+                  - key: cnpg.io/cluster
+                    operator: Exists
+          - resources:
+              namespaces:
+                - app
+              names:
+                - shop-postgres-*
+      validate:
+        message: Container images must come from ghcr.io/vitoliot/.
+        foreach:
+          - list: "request.object.spec.containers[]"
+            pattern:
+              image: "ghcr.io/vitoliot/*"
+
+    - name: require-workload-labels
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kyverno
+                - cnpg-system
+                - kube-system
+                - local-path-storage
+                - monitoring
+          - resources:
+              selector:
+                matchExpressions:
+                  - key: cnpg.io/cluster
+                    operator: Exists
+          - resources:
+              namespaces:
+                - app
+              names:
+                - shop-postgres-*
+      validate:
+        message: Pods must have standard application labels.
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/name: "?*"
+              app.kubernetes.io/part-of: "?*"
+
+    - name: disallow-privileged
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kyverno
+                - cnpg-system
+                - kube-system
+                - local-path-storage
+                - monitoring
+          - resources:
+              selector:
+                matchExpressions:
+                  - key: cnpg.io/cluster
+                    operator: Exists
+          - resources:
+              namespaces:
+                - app
+              names:
+                - shop-postgres-*
+      validate:
+        message: Privileged containers are not allowed.
+        foreach:
+          - list: "request.object.spec.containers[]"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.securityContext.privileged || false }}"
+                    operator: Equals
+                    value: true
+
+    - name: require-read-only-root-filesystem
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kyverno
+                - cnpg-system
+                - kube-system
+                - local-path-storage
+                - monitoring
+          - resources:
+              selector:
+                matchExpressions:
+                  - key: cnpg.io/cluster
+                    operator: Exists
+          - resources:
+              namespaces:
+                - app
+              names:
+                - shop-postgres-*
+      validate:
+        message: Every container must use a read-only root filesystem.
+        foreach:
+          - list: "request.object.spec.containers[]"
+            pattern:
+              securityContext:
+                readOnlyRootFilesystem: true
