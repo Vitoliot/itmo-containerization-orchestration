@@ -824,11 +824,15 @@ kubectl create --dry-run=server -f \
   lecture-3-kubernetes-control-plane/lab-work/policies/valid-pod.yaml
 ```
 
-Ожидается: политика имеет готовое состояние, а корректный Pod проходит
-server-side dry-run без ошибки admission webhook. Если `valid-pod.yaml` ещё
-не создан, его нужно подготовить из одного из рабочих Deployment-шаблонов,
-сохранив trusted image, labels, requests/limits и
+`values.yaml` для этой проверки использовать нельзя: это не Kubernetes-ресурс,
+а файл параметров Helm, поэтому в нём нет `apiVersion` и `kind`. Для dry-run
+добавлен отдельный корректный Pod
+[`valid-pod.yaml`](lab-work/policies/valid-pod.yaml), который содержит
+trusted image, обязательные labels, requests/limits и
 `readOnlyRootFilesystem: true`.
+
+Ожидается: политика имеет готовое состояние, а корректный Pod проходит
+server-side dry-run без ошибки admission webhook.
 
 ### Удаление API Pod и восстановление
 

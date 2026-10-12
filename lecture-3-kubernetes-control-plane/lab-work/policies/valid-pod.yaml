@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: policy-fixture-valid
+  labels:
+    app.kubernetes.io/name: policy-fixture-valid
+    app.kubernetes.io/part-of: lab3
+spec:
+  containers:
+    - name: api
+      image: ghcr.io/vitoliot/shop-api:lab2-v2
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          cpu: 250m
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
