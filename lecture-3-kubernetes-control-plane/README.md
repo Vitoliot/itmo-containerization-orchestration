@@ -175,6 +175,13 @@ Kyverno был установлен в kind-кластер `lab3` через Hel
 Корректный Pod с доверенным образом, labels, ресурсами и read-only root
 filesystem прошёл `kubectl create --dry-run=server`.
 
+На скриншоте ниже показан запуск всех пяти негативных fixtures через
+`kubectl apply`. Каждый манифест был отклонён admission webhook Kyverno, а
+текст ошибки указывает именно на нарушенное правило: labels, resource bounds,
+`privileged`, trusted image или read-only root filesystem.
+
+![Отклонение пяти негативных fixtures Kyverno](screenshots/part1-policy-rejections.png)
+
 ## Текущий статус
 
 Часть 1 проверена в отдельном kind-кластере `lab3`: Kyverno установлен через
@@ -258,6 +265,15 @@ rollingUpdate:
 только Pod с образом `shop-api:lab2-v2`.
 
 ![Rolling update API](screenshots/part2-rolling-update.png)
+
+Дополнительный live-скриншот показывает этот процесс одновременно в трёх
+терминалах: `helm upgrade` завершился успешно с новой ревизией, Pod
+переходили через `Pending`/`ContainerCreating`/`Running`, а непрерывные
+запросы к `/slow` продолжали получать ответы `ok`. Это подтверждает, что
+rolling update выполняется постепенно и сервис остаётся доступным во время
+замены Pod.
+
+![Rolling update с непрерывной проверкой API](screenshots/part2-rolling-update-live.png)
 
 ### Заведомо сломанный rollout
 
@@ -791,3 +807,96 @@ for:                    5m
 порога. После остановки нагрузки p95-алерт возвращается в `INACTIVE`, когда
 пятиминутное окно перестаёт содержать достаточное количество медленных
 запросов.
+
+## Какие проверки ещё выполнить
+
+Ниже перечислены дополнительные команды, которыми можно закрыть оставшиеся
+доказательства перед сдачей. Они не меняют структуру решения, а фиксируют
+фактическое состояние уже созданных ресурсов.
+
+### Состояние Kyverno и успешный dry-run
+
+```bash
+kubectl get clusterpolicy shop-cluster-guardrails
+kubectl get clusterpolicy shop-cluster-guardrails \
+  -o jsonpath='{.status.conditions[*].type}{"\n"}'
+kubectl create --dry-run=server -f \
+  lecture-3-kubernetes-control-plane/lab-work/policies/valid-pod.yaml
+```
+
+Ожидается: политика имеет готовое состояние, а корректный Pod проходит
+server-side dry-run без ошибки admission webhook. Если `valid-pod.yaml` ещё
+не создан, его нужно подготовить из одного из рабочих Deployment-шаблонов,
+сохранив trusted image, labels, requests/limits и
+`readOnlyRootFilesystem: true`.
+
+### Удаление API Pod и восстановление
+
+```bash
+API_POD="$(kubectl get pods -n app \
+  -l app.kubernetes.io/name=api \
+  -o jsonpath='{.items[0].metadata.name}')"
+kubectl delete pod -n app "$API_POD"
+kubectl get pods -n app -l app.kubernetes.io/name=api -w
+```
+
+Ожидается: Deployment создаёт новый Pod, и он переходит в `1/1 Running`.
+
+### Изменение числа реплик через Helm
+
+```bash
+helm upgrade shop \
+  lecture-3-kubernetes-control-plane/lab-work/chart/shop \
+  --namespace app \
+  --set api.replicaCount=4 \
+  --wait
+kubectl get pods -n app -l app.kubernetes.io/name=api
+
+helm upgrade shop \
+  lecture-3-kubernetes-control-plane/lab-work/chart/shop \
+  --namespace app \
+  --set api.replicaCount=3 \
+  --wait
+```
+
+Ожидается: сначала появляется четыре готовых API Pod, затем после возврата
+значения — три.
+
+### Успешный Helm rollback
+
+```bash
+helm history shop -n app
+helm rollback shop <РАБОЧАЯ_РЕВИЗИЯ> \
+  --namespace app \
+  --wait \
+  --timeout 5m
+kubectl rollout status deployment/shop-shop-api \
+  -n app \
+  --timeout=5m
+```
+
+Ожидается: Helm сообщает об успешном rollback, Deployment завершает rollout,
+а все API Pod становятся `1/1 Ready` с рабочей конфигурацией.
+
+### CRD PostgreSQL со spec и status
+
+```bash
+kubectl get cluster shop-postgres -n app -o yaml
+```
+
+В выводе нужно показать обе части: `spec` с `instances`, `imageName`,
+bootstrap, storage и resources; `status` с `phase: Cluster in healthy state`,
+`readyInstances: 1`, primary и conditions оператора.
+
+### ServiceMonitor, PrometheusRule и target UP
+
+```bash
+kubectl get servicemonitor,prometheusrule -n app
+kubectl port-forward -n monitoring \
+  svc/kube-prometheus-stack-prometheus 19090:9090
+```
+
+После открытия `http://localhost:19090/targets` ожидается target
+`shop-shop-api` в состоянии `UP`. На странице
+`http://localhost:19090/alerts` должны быть видны три правила
+`ShopApiHighErrorRate`, `ShopApiHighP95Latency` и `ShopApiTargetDown`.
