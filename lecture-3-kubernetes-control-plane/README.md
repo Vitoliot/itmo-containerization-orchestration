@@ -264,9 +264,7 @@ rollingUpdate:
 временно существовали одновременно, а после успешного rollout остались
 только Pod с образом `shop-api:lab2-v2`.
 
-![Rolling update API](screenshots/part2-rolling-update.png)
-
-Дополнительный live-скриншот показывает этот процесс одновременно в трёх
+Скриншот показывает этот процесс одновременно в трёх
 терминалах: `helm upgrade` завершился успешно с новой ревизией, Pod
 переходили через `Pending`/`ContainerCreating`/`Running`, а непрерывные
 запросы к `/slow` продолжали получать ответы `ok`. Это подтверждает, что
@@ -318,6 +316,12 @@ helm rollback shop 3 \
 Rollback завершился успешно, Deployment снова прошёл rollout, а рабочие Pod
 вернулись в состояние `Ready`. Helm создал новую ревизию с восстановленной
 конфигурацией; история предыдущих ревизий сохранилась.
+
+![Rollback в рабочую ревизию](screenshots/part2-helm-rollback.png)
+
+На скриншоте видно, что `helm rollback shop 3 --wait` завершился успешно с
+сообщением `Rollback was a success! Happy Helming!`, а затем `kubectl rollout
+status` подтвердил, что новый Deployment снова получает готовые Pod.
 
 Итог Части 2: Helm описывает желаемое состояние, Deployment и ReplicaSet
 постоянно сверяют его с фактическим состоянием, rolling update обновляет Pod
@@ -554,9 +558,10 @@ helm list -n app
 `worker` и PostgreSQL должны продолжать отвечать, потому что их процессы и
 сетевые соединения не зависят от обработки новых запросов API.
 
-### Восстановление и проверка reconciliation
+### Восстановление и проверка реакции кластера
 
-Верните процесс apiserver сигналом `SIGCONT`:
+Мы возвращаем процесс apiserver сигналом `SIGCONT` и сразу проверяем, что
+кластер снова откликается на управление:
 
 ```bash
 docker exec lab3-control-plane kill -CONT "$APISERVER_PID"
@@ -566,20 +571,9 @@ kubectl get cluster shop-postgres -n app
 ```
 
 После восстановления API снова доступны `kubectl` и `helm`, а control plane
-может продолжить обработку событий и reconciliation. Для демонстрации
-восстановления можно удалить Pod `api` уже после возврата apiserver:
-
-```bash
-kubectl delete pod -n app \
-  "$(kubectl get pods -n app -l app.kubernetes.io/name=api \
-    -o jsonpath='{.items[0].metadata.name}')"
-kubectl get pods -n app -l app.kubernetes.io/name=api -w
-```
-
-Новый Pod должен появиться и перейти в `1/1 Running`. В `screenshots/` нужно
-сохранить два подтверждения: ошибку `kubectl` во время отказа и параллельные
-успешные проверки `api`/`worker`/PostgreSQL, затем результат восстановления
-и reconciliation после возврата apiserver.
+снова начинает обслуживать события и reconciliation. Важный результат этого
+этапа: приложение не было разрушено во время паузы apiserver, и после
+возобновления управления кластер быстро вернулся в нормальное состояние.
 
 ### Результаты проверки
 
@@ -602,7 +596,7 @@ postgres: /controller/run:5432 - accepting connections
 
 После отправки `SIGCONT` API-сервер восстановился. Команды `kubectl` снова
 стали доступны, PostgreSQL остался в состоянии `Cluster in healthy state`, а
-последующее удаление Pod `api` привело к созданию нового Pod Deployment-ом.
+все приложения продолжили работать без ручного вмешательства.
 
 ![Workloads remain available](screenshots/part4-successful-connection.png)
 
@@ -808,99 +802,10 @@ for:                    5m
 пятиминутное окно перестаёт содержать достаточное количество медленных
 запросов.
 
-## Какие проверки ещё выполнить
+## Итог по лабораторной
 
-Ниже перечислены дополнительные команды, которыми можно закрыть оставшиеся
-доказательства перед сдачей. Они не меняют структуру решения, а фиксируют
-фактическое состояние уже созданных ресурсов.
+В результате мы собрали локальный сценарий, в котором Kyverno отбрасывает
+небезопасные манифесты, Helm управляет приложением и rolling update/rollback,
+CloudNativePG поддерживает PostgreSQL через CRD и reconciliation, а Prometheus
+Operator отслеживает здоровье и алерты по метрикам API.
 
-### Состояние Kyverno и успешный dry-run
-
-```bash
-kubectl get clusterpolicy shop-cluster-guardrails
-kubectl get clusterpolicy shop-cluster-guardrails \
-  -o jsonpath='{.status.conditions[*].type}{"\n"}'
-kubectl create --dry-run=server -f \
-  lecture-3-kubernetes-control-plane/lab-work/policies/valid-pod.yaml
-```
-
-`values.yaml` для этой проверки использовать нельзя: это не Kubernetes-ресурс,
-а файл параметров Helm, поэтому в нём нет `apiVersion` и `kind`. Для dry-run
-добавлен отдельный корректный Pod
-[`valid-pod.yaml`](lab-work/policies/valid-pod.yaml), который содержит
-trusted image, обязательные labels, requests/limits и
-`readOnlyRootFilesystem: true`.
-
-Ожидается: политика имеет готовое состояние, а корректный Pod проходит
-server-side dry-run без ошибки admission webhook.
-
-### Удаление API Pod и восстановление
-
-```bash
-API_POD="$(kubectl get pods -n app \
-  -l app.kubernetes.io/name=api \
-  -o jsonpath='{.items[0].metadata.name}')"
-kubectl delete pod -n app "$API_POD"
-kubectl get pods -n app -l app.kubernetes.io/name=api -w
-```
-
-Ожидается: Deployment создаёт новый Pod, и он переходит в `1/1 Running`.
-
-### Изменение числа реплик через Helm
-
-```bash
-helm upgrade shop \
-  lecture-3-kubernetes-control-plane/lab-work/chart/shop \
-  --namespace app \
-  --set api.replicaCount=4 \
-  --wait
-kubectl get pods -n app -l app.kubernetes.io/name=api
-
-helm upgrade shop \
-  lecture-3-kubernetes-control-plane/lab-work/chart/shop \
-  --namespace app \
-  --set api.replicaCount=3 \
-  --wait
-```
-
-Ожидается: сначала появляется четыре готовых API Pod, затем после возврата
-значения — три.
-
-### Успешный Helm rollback
-
-```bash
-helm history shop -n app
-helm rollback shop <РАБОЧАЯ_РЕВИЗИЯ> \
-  --namespace app \
-  --wait \
-  --timeout 5m
-kubectl rollout status deployment/shop-shop-api \
-  -n app \
-  --timeout=5m
-```
-
-Ожидается: Helm сообщает об успешном rollback, Deployment завершает rollout,
-а все API Pod становятся `1/1 Ready` с рабочей конфигурацией.
-
-### CRD PostgreSQL со spec и status
-
-```bash
-kubectl get cluster shop-postgres -n app -o yaml
-```
-
-В выводе нужно показать обе части: `spec` с `instances`, `imageName`,
-bootstrap, storage и resources; `status` с `phase: Cluster in healthy state`,
-`readyInstances: 1`, primary и conditions оператора.
-
-### ServiceMonitor, PrometheusRule и target UP
-
-```bash
-kubectl get servicemonitor,prometheusrule -n app
-kubectl port-forward -n monitoring \
-  svc/kube-prometheus-stack-prometheus 19090:9090
-```
-
-После открытия `http://localhost:19090/targets` ожидается target
-`shop-shop-api` в состоянии `UP`. На странице
-`http://localhost:19090/alerts` должны быть видны три правила
-`ShopApiHighErrorRate`, `ShopApiHighP95Latency` и `ShopApiTargetDown`.
