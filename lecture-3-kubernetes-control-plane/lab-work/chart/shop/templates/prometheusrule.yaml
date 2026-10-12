@@ -45,6 +45,8 @@ spec:
 
         - alert: ShopApiTargetDown
           expr: |
+            absent(up{namespace="{{ .Release.Namespace }}", service="{{ include "shop.fullname" . }}-api"})
+            or
             up{namespace="{{ .Release.Namespace }}", service="{{ include "shop.fullname" . }}-api"} == 0
           for: 2m
           labels:
