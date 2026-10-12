@@ -94,10 +94,12 @@ monitoring:
   serviceMonitor:
     enabled: true
     interval: 15s
-    labels: {}
+    labels:
+      release: kube-prometheus-stack
   prometheusRule:
     enabled: true
-    labels: {}
+    labels:
+      release: kube-prometheus-stack
 
 postgres:
   enabled: true

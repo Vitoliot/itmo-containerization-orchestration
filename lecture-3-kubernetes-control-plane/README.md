@@ -692,3 +692,53 @@ Prometheus для метрик cAdvisor. Он не обрабатывает CRD 
 экземпляр в Kubernetes (например, уже установленный в кластере стек
 `kube-prometheus-stack`); это не дополнительная копия мониторинга в чарте, а
 контроллер, который обнаруживает эти два ресурса.
+
+### Установка совместимого стека и результат
+
+В kind-кластер установлен существующий Prometheus Operator-совместимый стек
+`kube-prometheus-stack`. Grafana и Alertmanager для этой лабораторной не
+поднимаются, потому что требуется проверить именно сбор метрик и состояние
+правила:
+
+```bash
+helm repo add prometheus-community \
+  https://prometheus-community.github.io/helm-charts
+helm repo update
+
+helm upgrade --install kube-prometheus-stack \
+  prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --create-namespace \
+  --set grafana.enabled=false \
+  --set alertmanager.enabled=false \
+  --set prometheus.prometheusSpec.retention=1d \
+  --wait \
+  --timeout 10m
+```
+
+Поскольку служебные Pod стека не являются приложением `shop`, namespace
+`monitoring` добавлен в исключения только для прикладных Kyverno-правил.
+Это позволяет установить Operator, не ослабляя проверки ресурсов в `app`.
+
+После установки Prometheus обнаружил API как target с состоянием `up`, а
+Operator загрузил все три правила:
+
+```text
+ServiceMonitor: shop-shop-api
+PrometheusRule:  shop-shop
+Rules:           ShopApiHighErrorRate, ShopApiHighP95Latency, ShopApiTargetDown
+Target:          shop-shop-api — up
+```
+
+Для проверки алерта было сгенерировано 5xx-движение запросами к `/fail`.
+После истечения `for: 2m` результат Prometheus API:
+
+```text
+ShopApiHighErrorRate  firing
+ShopApiHighP95Latency inactive
+ShopApiTargetDown     inactive
+```
+
+Таким образом, метрики приложения действительно прошли путь
+`/metrics → ServiceMonitor → Prometheus → PrometheusRule`, а не просто были
+описаны в Helm-шаблоне.

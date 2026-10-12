@@ -24,6 +24,7 @@ spec:
                 - cnpg-system
                 - kube-system
                 - local-path-storage
+                - monitoring
           - resources:
               selector:
                 matchExpressions:
@@ -61,6 +62,7 @@ spec:
                 - cnpg-system
                 - kube-system
                 - local-path-storage
+                - monitoring
           - resources:
               selector:
                 matchExpressions:
@@ -92,6 +94,7 @@ spec:
                 - cnpg-system
                 - kube-system
                 - local-path-storage
+                - monitoring
           - resources:
               selector:
                 matchExpressions:
@@ -124,6 +127,7 @@ spec:
                 - cnpg-system
                 - kube-system
                 - local-path-storage
+                - monitoring
           - resources:
               selector:
                 matchExpressions:
@@ -159,6 +163,7 @@ spec:
                 - cnpg-system
                 - kube-system
                 - local-path-storage
+                - monitoring
           - resources:
               selector:
                 matchExpressions:

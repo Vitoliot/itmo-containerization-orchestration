@@ -15,9 +15,9 @@ spec:
         - alert: ShopApiHighErrorRate
           expr: |
             (
-              sum(rate(api_http_errors_total{namespace="{{ .Release.Namespace }}"}[5m]))
+              sum(rate(api_http_errors_total[5m]))
               /
-              clamp_min(sum(rate(api_http_requests_total{namespace="{{ .Release.Namespace }}"}[5m])), 1)
+              clamp_min(sum(rate(api_http_requests_total[5m])), 1)
             ) > 0.05
           for: 2m
           labels:
@@ -32,7 +32,7 @@ spec:
             histogram_quantile(
               0.95,
               sum by (le) (
-                rate(api_http_request_duration_seconds_bucket{namespace="{{ .Release.Namespace }}"}[5m])
+                rate(api_http_request_duration_seconds_bucket[5m])
               )
             ) > 1
           for: 5m
