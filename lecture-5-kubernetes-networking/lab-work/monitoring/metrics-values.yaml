@@ -1,0 +1,46 @@
+# Single shared monitoring stack (from Lab 2), NOT part of shop chart.
+defaultRules:
+  create: false
+nodeExporter:
+  enabled: false
+kubeStateMetrics:
+  enabled: false
+kubeApiServer:
+  enabled: false
+kubelet:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+coreDns:
+  enabled: false
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 12h
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {cpu: 800m, memory: 768Mi}
+prometheusOperator:
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 300m, memory: 256Mi}
+grafana:
+  enabled: true
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+alertmanager:
+  enabled: true
