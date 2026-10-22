@@ -72,6 +72,10 @@ GitHub MCP подключается к официальному удалённо
 
 ## Результат работы
 
+Для демонстрации создан тестовый GitHub Actions run с отсутствующей обязательной переменной `DATABASE_URL`. Job `validate-required-configuration` завершился с кодом `1`, после чего сведения о неудачном запуске были переданы ассистенту.
+
+![Тестовый сбой GitHub Actions из-за отсутствующей переменной DATABASE_URL](screenshots/06-github-actions-failure.png)
+
 Ниже показан опубликованный workflow в n8n. Он принимает webhook, проверяет входное событие, запускает AI-агента с GitHub MCP и Filesystem MCP, валидирует ответ и записывает Markdown-файл.
 
 ![Workflow CI Failure Assistant в n8n](screenshots/04-n8n-workflow.png)
