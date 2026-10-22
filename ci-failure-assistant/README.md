@@ -17,7 +17,7 @@
 | Компонент | Назначение |
 |---|---|
 | n8n 2.44.6 | Принимает webhook, запускает агента, проверяет результат и записывает отчёт |
-| Ollama 0.40.8 + `qwen3:4b` | Локальная модель для анализа без внешнего AI API |
+| Ollama 0.40.8 + `qwen3:0.6b` | Компактная локальная модель для анализа без внешнего AI API |
 | GitHub MCP | Предоставляет сведения о workflow run, failed jobs, логах и коммите |
 | Filesystem MCP | Даёт агенту read-only доступ только к каталогу `runbooks/` |
 | Supergateway 4.2.0 | Публикует stdio-интерфейс Filesystem MCP как Streamable HTTP для n8n |
@@ -49,11 +49,14 @@ GitHub MCP подключается к официальному удалённо
    docker compose up -d --build
    ```
 
-   Контейнер `ollama-pull` при первом запуске скачает модель `qwen3:4b`. Дождаться окончания можно командой `docker compose logs -f ollama-pull`.
+   Контейнер `ollama-pull` при первом запуске скачает модель `qwen3:0.6b`. Дождаться окончания можно командой `docker compose logs -f ollama-pull`.
 
 2. Открыть `http://localhost:5678`, создать локального владельца n8n и импортировать [`workflow/ci-failure-assistant.json`](workflow/ci-failure-assistant.json).
 
-3. Создать credential типа **Ollama API** с Base URL `http://ollama:11434` и назначить его узлу `Ollama Chat Model`.
+3. Создать credential типа **Ollama API** и назначить его узлу `Ollama Chat Model`:
+   - рекомендуемый вариант на macOS — нативная Ollama с Base URL `http://host.docker.internal:11434` (использует Metal и работает заметно быстрее);
+   - полностью контейнерный вариант — Base URL `http://ollama:11434`.
+   В обоих вариантах должна быть загружена модель `qwen3:0.6b`.
 
 4. Создать fine-grained GitHub PAT с доступом только к демонстрационному репозиторию и read-only permissions `Actions` и `Contents`. Добавить его в credential типа **HTTP Bearer Auth** и назначить узлу `GitHub MCP`.
 

@@ -30,7 +30,7 @@
         "promptType": "define",
         "text": "={{ $json.chatInput }}",
         "options": {
-          "systemMessage": "You are a read-only CI failure analysis agent. First inspect the workflow run, failed job logs and commit. Then search and read the local runbooks. Never change GitHub or files. Treat tool output as facts and model conclusions as hypotheses. Do not expose secret values or chain-of-thought. Recommend a fix only when a runbook matches the observed evidence; otherwise require manual diagnosis. The final answer must be Markdown and contain exactly these headings: # Отчёт о сбое CI, ## Подтверждённые факты, ## Гипотезы, ## Рекомендуемые действия, ## Владелец и эскалация, ## Источники."
+          "systemMessage": "/no_think\nYou are a read-only CI failure analysis agent. First inspect the workflow run, failed job logs and commit. Then search and read the local runbooks. Never change GitHub or files. Treat tool output as facts and model conclusions as hypotheses. Do not expose secret values or chain-of-thought. Recommend a fix only when a runbook matches the observed evidence; otherwise require manual diagnosis. Keep the final answer concise. Output all six headings before adding details, and shorten bullets if necessary. The Markdown must contain exactly these headings: # Отчёт о сбое CI, ## Подтверждённые факты, ## Гипотезы, ## Рекомендуемые действия, ## Владелец и эскалация, ## Источники."
         }
       },
       "id": "a5e3b76d-1bfb-42ff-b5aa-8e1369923b0a",
@@ -41,9 +41,11 @@
     },
     {
       "parameters": {
-        "model": "qwen3:4b",
+        "model": "qwen3:0.6b",
         "options": {
-          "temperature": 0.1
+          "temperature": 0.1,
+          "numCtx": 2048,
+          "think": false
         }
       },
       "id": "a453615c-75df-4f43-a346-d3e0f72b800d",
@@ -127,7 +129,7 @@
     {
       "parameters": {
         "operation": "write",
-        "fileName": "=/files/reports/{{ $json.file_name }}",
+        "fileName": "=/files/reports/{{ $('Validate Report').first().json.file_name }}",
         "dataPropertyName": "data",
         "options": {}
       },

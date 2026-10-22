@@ -11,6 +11,7 @@ owner="$1"
 repository="$2"
 run_id="$3"
 head_sha="$4"
+webhook_url="${N8N_WEBHOOK_URL:-http://127.0.0.1:5678/webhook/ci-failure}"
 
 if ! [[ "$run_id" =~ ^[0-9]+$ ]]; then
   echo "failed-run-id must be numeric" >&2
@@ -39,9 +40,10 @@ jq -n \
       owner: {login: $owner}
     }
   }' | curl --fail-with-body --silent --show-error \
+    --max-time 600 \
     --request POST \
     --header 'Content-Type: application/json' \
     --data-binary @- \
-    http://localhost:5678/webhook/ci-failure
+    "$webhook_url"
 
 echo
