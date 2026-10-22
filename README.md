@@ -8,6 +8,7 @@
 
 - [Лабораторная 1 — свой Docker](lecture-1-docker/)
 - [Лабораторная 3 — control plane Kubernetes](lecture-3-kubernetes-control-plane/)
+- [Лабораторная 8 — AI-ассистент разбора неудачных CI-сборок](ci-failure-assistant/)
 
 ---
 

@@ -1,0 +1,190 @@
+{
+  "name": "Lab 8 - CI Failure Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ci-failure",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "71b31d76-493b-4ea4-8634-73568982dc58",
+      "name": "GitHub Failure Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-720, 0],
+      "webhookId": "18d43494-b53d-4c2b-a455-90af14faf68e"
+    },
+    {
+      "parameters": {
+        "jsCode": "const event = $json.body ?? $json;\nconst run = event.workflow_run ?? {};\nconst repository = event.repository ?? run.repository ?? {};\nconst owner = repository.owner?.login ?? run.repository?.owner?.login;\nconst repo = repository.name ?? run.repository?.name;\nconst runId = Number(run.id ?? event.run_id);\nconst headSha = run.head_sha ?? event.head_sha;\n\nif (!owner || !repo || !Number.isSafeInteger(runId) || !headSha) {\n  throw new Error('Webhook must contain repository owner/name, workflow run id and head SHA');\n}\nif (run.conclusion && run.conclusion !== 'failure') {\n  throw new Error(`Expected a failed run, got conclusion=${run.conclusion}`);\n}\n\nreturn [{\n  json: {\n    owner,\n    repo,\n    run_id: runId,\n    head_sha: headSha,\n    workflow_url: run.html_url ?? '',\n    input_source: event.workflow_run ? 'github_webhook' : 'test_fixture',\n    chatInput: `Analyze failed GitHub Actions run ${runId} in ${owner}/${repo} at commit ${headSha}. Follow the CI failure analysis skill exactly. Use only the supplied MCP tools. Return Markdown with every mandatory section.`\n  }\n}];"
+      },
+      "id": "aa1edffe-e1bc-45e0-af56-98fb4d89b1c1",
+      "name": "Validate Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-496, 0]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a read-only CI failure analysis agent. First inspect the workflow run, failed job logs and commit. Then search and read the local runbooks. Never change GitHub or files. Treat tool output as facts and model conclusions as hypotheses. Do not expose secret values or chain-of-thought. Recommend a fix only when a runbook matches the observed evidence; otherwise require manual diagnosis. The final answer must be Markdown and contain exactly these headings: # Отчёт о сбое CI, ## Подтверждённые факты, ## Гипотезы, ## Рекомендуемые действия, ## Владелец и эскалация, ## Источники."
+        }
+      },
+      "id": "a5e3b76d-1bfb-42ff-b5aa-8e1369923b0a",
+      "name": "CI Analysis Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [-240, 0]
+    },
+    {
+      "parameters": {
+        "model": "qwen3:4b",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "a453615c-75df-4f43-a346-d3e0f72b800d",
+      "name": "Ollama Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [-432, 240],
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-local",
+          "name": "Ollama local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://api.githubcopilot.com/mcp/",
+        "serverTransport": "httpStreamable",
+        "authentication": "bearerAuth",
+        "include": "selected",
+        "includeTools": ["actions_get", "get_job_logs", "get_commit"],
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "03b12ac3-00d7-43d1-a530-a1c5e563f59f",
+      "name": "GitHub MCP",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [-224, 240],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "github-mcp-token",
+          "name": "GitHub MCP token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://filesystem-mcp:8000/mcp",
+        "serverTransport": "httpStreamable",
+        "authentication": "none",
+        "include": "selected",
+        "includeTools": ["search_files", "read_text_file"],
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "d0834ca5-1590-45e8-a321-41bf30340468",
+      "name": "Filesystem MCP",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [-16, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $json.output;\nif (typeof result !== 'string' || result.trim().length === 0) {\n  throw new Error('Agent returned an empty report');\n}\n\nconst report = result\n  .replace(/^```(?:markdown)?\\s*/i, '')\n  .replace(/\\s*```$/i, '')\n  .trim();\n\nconst requiredHeadings = [\n  '# Отчёт о сбое CI',\n  '## Подтверждённые факты',\n  '## Гипотезы',\n  '## Рекомендуемые действия',\n  '## Владелец и эскалация',\n  '## Источники'\n];\nconst missing = requiredHeadings.filter((heading) => !report.includes(heading));\nif (missing.length) {\n  throw new Error(`Report is missing required headings: ${missing.join(', ')}`);\n}\n\nconst meta = $('Validate Event').first().json;\nconst safeRepo = String(meta.repo).replace(/[^a-zA-Z0-9._-]/g, '-');\nreturn [{\n  json: {\n    report: `${report}\\n`,\n    file_name: `ci-${safeRepo}-${meta.run_id}.md`,\n    run_id: meta.run_id,\n    repository: `${meta.owner}/${meta.repo}`\n  }\n}];"
+      },
+      "id": "771a8b70-8ff7-46fd-afd4-1cd60769fd71",
+      "name": "Validate Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [16, 0]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "report",
+        "binaryPropertyName": "data",
+        "options": {
+          "fileName": "={{ $json.file_name }}",
+          "encoding": "utf8"
+        }
+      },
+      "id": "c728656a-e82a-44bc-b7fb-7920d1381115",
+      "name": "Convert Report to File",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [256, 0]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/files/reports/{{ $json.file_name }}",
+        "dataPropertyName": "data",
+        "options": {}
+      },
+      "id": "a49b4e09-ec04-4aa7-a5c4-254044551a45",
+      "name": "Write Markdown Report",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [496, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const report = $('Validate Report').first().json;\nreturn [{ json: { status: 'created', run_id: report.run_id, repository: report.repository, report_path: `/files/reports/${report.file_name}` } }];"
+      },
+      "id": "38510fe3-f0ab-40f1-8477-06116cfcab19",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [736, 0]
+    }
+  ],
+  "connections": {
+    "GitHub Failure Webhook": {
+      "main": [[{"node": "Validate Event", "type": "main", "index": 0}]]
+    },
+    "Validate Event": {
+      "main": [[{"node": "CI Analysis Agent", "type": "main", "index": 0}]]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [[{"node": "CI Analysis Agent", "type": "ai_languageModel", "index": 0}]]
+    },
+    "GitHub MCP": {
+      "ai_tool": [[{"node": "CI Analysis Agent", "type": "ai_tool", "index": 0}]]
+    },
+    "Filesystem MCP": {
+      "ai_tool": [[{"node": "CI Analysis Agent", "type": "ai_tool", "index": 0}]]
+    },
+    "CI Analysis Agent": {
+      "main": [[{"node": "Validate Report", "type": "main", "index": 0}]]
+    },
+    "Validate Report": {
+      "main": [[{"node": "Convert Report to File", "type": "main", "index": 0}]]
+    },
+    "Convert Report to File": {
+      "main": [[{"node": "Write Markdown Report", "type": "main", "index": 0}]]
+    },
+    "Write Markdown Report": {
+      "main": [[{"node": "Success Response", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "53bd5f04-cd24-4f0f-84e0-02a347223169",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

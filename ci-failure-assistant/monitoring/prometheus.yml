@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: n8n
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - n8n:5678
+
+  - job_name: component-health
+    metrics_path: /probe
+    params:
+      module:
+        - http_2xx
+    static_configs:
+      - targets:
+          - http://n8n:5678/healthz
+          - http://filesystem-mcp:8000/healthz
+          - http://ollama:11434/api/tags
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

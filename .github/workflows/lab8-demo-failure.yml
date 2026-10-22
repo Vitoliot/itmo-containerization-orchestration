@@ -1,0 +1,23 @@
+name: Lab 8 demo failure
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-required-configuration:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'lab-8-ci-failure-assistant'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Demonstrate a missing required variable
+        env:
+          DATABASE_URL: ${{ secrets.LAB8_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL is not set" >&2
+            exit 1
+          fi
