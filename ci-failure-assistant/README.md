@@ -70,6 +70,18 @@ GitHub MCP подключается к официальному удалённо
 
 Готовый файл появится в `reports/ci-REPOSITORY-RUN_ID.md`. Тестовый формат события приведён в [`test-data/github-workflow-failure.json`](test-data/github-workflow-failure.json).
 
+## Результат работы
+
+Ниже показан опубликованный workflow в n8n. Он принимает webhook, проверяет входное событие, запускает AI-агента с GitHub MCP и Filesystem MCP, валидирует ответ и записывает Markdown-файл.
+
+![Workflow CI Failure Assistant в n8n](screenshots/04-n8n-workflow.png)
+
+Контрольный запуск для GitHub Actions run `39821630472` успешно прошёл весь workflow за `10.474` секунды: все основные узлы завершились без ошибки, а отчёт был записан в файл.
+
+![Успешное выполнение workflow в n8n](screenshots/05-n8n-success.png)
+
+Полученный результат сохранён в репозитории как [`evidence/ci-failure-report.md`](evidence/ci-failure-report.md). Рабочий каталог `reports/` остаётся в `.gitignore`, чтобы последующие локальные отчёты не попадали в Git автоматически.
+
 ## Мониторинг
 
 После `docker compose up -d --build` доступны:
