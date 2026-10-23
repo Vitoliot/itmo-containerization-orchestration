@@ -1,0 +1,20 @@
+name: Lab 8 demo failure
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-required-configuration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Demonstrate a missing required variable
+        env:
+          DATABASE_URL: ${{ secrets.LAB8_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL is not set" >&2
+            exit 1
+          fi
