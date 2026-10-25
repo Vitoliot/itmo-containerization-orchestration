@@ -1,0 +1,5 @@
+lab-work/results/*
+!lab-work/results/.gitkeep
+**/__pycache__/
+**/*.pyc
+.DS_Store

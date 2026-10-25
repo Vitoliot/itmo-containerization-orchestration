@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nettest
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+  namespace: nettest
+  labels: {role: client}
+spec:
+  containers:
+    - name: netshoot
+      image: nicolaka/netshoot:v0.13
+      command: ["sh", "-c", "sleep 86400"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: intruder
+  namespace: nettest
+  labels: {role: intruder}
+spec:
+  containers:
+    - name: netshoot
+      image: nicolaka/netshoot:v0.13
+      command: ["sh", "-c", "sleep 86400"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-a
+  namespace: nettest
+spec:
+  nodeName: lab5-worker
+  containers:
+    - name: netshoot
+      image: nicolaka/netshoot:v0.13
+      command: ["sh", "-c", "sleep 86400"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-b
+  namespace: nettest
+spec:
+  nodeName: lab5-worker2
+  containers:
+    - name: netshoot
+      image: nicolaka/netshoot:v0.13
+      command: ["sh", "-c", "sleep 86400"]
