@@ -1,0 +1,6 @@
+apiVersion: v2
+name: shop
+description: Helm chart for shop (api, worker, batch, postgres) used in Lab 4
+type: application
+version: 0.2.0
+appVersion: "lab4"

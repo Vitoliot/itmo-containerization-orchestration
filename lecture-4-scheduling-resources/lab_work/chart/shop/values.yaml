@@ -1,0 +1,181 @@
+# Выбор механизма разнесения реплик (Часть 1):
+#   topologySpreadConstraints | podAntiAffinity | disabled
+spreading:
+  mechanism: topologySpreadConstraints
+  topologyKey: kubernetes.io/hostname
+  maxSkew: 1
+  whenUnsatisfiable: ScheduleAnyway
+  antiAffinityType: preferred
+
+priorityClasses:
+  - name: shop-high
+    value: 1000000
+    description: Critical path (api, postgres)
+  - name: shop-low
+    value: 1000
+    description: Sacrificial batch / nightly analytics
+
+api:
+  replicaCount: 3  # после Части 6 вернули с 5
+
+  image:
+    repository: ghcr.io/vitoliot/shop-api
+    tag: lab4
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  priorityClassName: shop-high
+
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+
+  # Guaranteed: requests = limits. krr дал ~34m/100Mi; для живого SLA поднял cpu (иначе throttling/probes).
+  env:
+    - name: OTEL_SERVICE_NAME
+      value: api
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: ""
+    - name: HEALTH_FAIL
+      value: "false"
+
+  resources:
+    requests:
+      cpu: 150m
+      memory: 128Mi
+    limits:
+      cpu: 150m
+      memory: 128Mi
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+
+  probes:
+    readiness:
+      path: /health
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 6
+    liveness:
+      path: /health
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+
+worker:
+  replicaCount: 2
+
+  image:
+    repository: ghcr.io/vitoliot/shop-worker
+    tag: lab3
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  env:
+    - name: OTEL_SERVICE_NAME
+      value: worker
+    - name: HEALTH_FAIL
+      value: "false"
+
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+
+  probes:
+    readiness:
+      path: /health
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 6
+    liveness:
+      path: /health
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      failureThreshold: 6
+
+# Burstable: requests << limits. Часть 7: жрём RAM ниже своего limit, ловим Evicted (не OOMKilled).
+batch:
+  replicaCount: 2
+
+  image:
+    repository: ghcr.io/vitoliot/shop-batch
+    tag: lab4
+    pullPolicy: IfNotPresent
+
+  priorityClassName: shop-low
+
+  env:
+    - name: MEM_MB
+      value: "1600"
+    - name: WORKERS
+      value: "1"
+    - name: STEP_MB
+      value: "100"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    labels:
+      release: monitoring
+  prometheusRule:
+    enabled: true
+    labels:
+      release: monitoring
+
+postgres:
+  enabled: true
+  name: shop-postgres
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.4
+  priorityClassName: shop-high
+  # PDB для postgres не ставим: CNPG сам управляет disruption, helm --wait на нашем PDB ломался
+  pdb:
+    enabled: false
+    maxUnavailable: 0
+  storage:
+    size: 1Gi
+    storageClass: standard
+  # Guaranteed
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+  database:
+    name: shop
+    owner: shop
