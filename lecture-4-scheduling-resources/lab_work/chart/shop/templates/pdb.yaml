@@ -1,0 +1,31 @@
+{{- if .Values.api.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "shop.fullname" . }}-api
+  labels:
+    {{- include "shop.workloadLabels" (dict "Chart" .Chart "Release" .Release "workload" "api") | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.api.pdb.maxUnavailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+{{- if and .Values.postgres.enabled .Values.postgres.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Values.postgres.name }}
+  labels:
+    {{- include "shop.labels" . | nindent 4 }}
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  maxUnavailable: {{ .Values.postgres.pdb.maxUnavailable }}
+  selector:
+    matchLabels:
+      cnpg.io/cluster: {{ .Values.postgres.name }}
+{{- end }}

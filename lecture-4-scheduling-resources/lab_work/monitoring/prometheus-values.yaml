@@ -1,0 +1,25 @@
+# Лёгкий стек под kind 2 ноды. Для krr нужны метрики kubelet/cadvisor.
+grafana:
+  enabled: false
+alertmanager:
+  enabled: false
+defaultRules:
+  create: false
+prometheus:
+  prometheusSpec:
+    retention: 2h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

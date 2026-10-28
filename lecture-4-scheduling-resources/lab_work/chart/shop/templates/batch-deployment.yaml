@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "shop.fullname" . }}-batch
+  labels:
+    {{- include "shop.workloadLabels" (dict "Chart" .Chart "Release" .Release "workload" "batch") | nindent 4 }}
+spec:
+  replicas: {{ .Values.batch.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: batch
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "shop.workloadLabels" (dict "Chart" .Chart "Release" .Release "workload" "batch") | nindent 8 }}
+    spec:
+      {{- with .Values.batch.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      containers:
+        - name: batch
+          image: "{{ .Values.batch.image.repository }}:{{ .Values.batch.image.tag }}"
+          imagePullPolicy: {{ .Values.batch.image.pullPolicy }}
+          env:
+            {{- toYaml .Values.batch.env | nindent 12 }}
+          resources:
+            {{- toYaml .Values.batch.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.batch.securityContext | nindent 12 }}
